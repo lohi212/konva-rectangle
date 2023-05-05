@@ -1,88 +1,148 @@
-import React, { useEffect, useState } from "react";
-import { imagesList } from "../utils";
-import Image from "./Image";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { Stage, Layer, Rect, Transformer, Circle, Text } from "react-konva";
+import URLImage from "./Image";
+import { ShapeDrawerContext } from "../App";
 
-const ObjectDraw = () => {
-  const [defaultCoordinates, setDefaultCoordinates] = useState({
-    defaultWidth: 0,
-    defaultHt: 0,
-  });
-  const [currentImg, setCurrImg] = useState(imagesList[0]);
-  const [coOrdinates, setCoordinates] = useState({
-    x1: 0,
-    y1: 0,
-    x2: 0,
-    y2: 0,
-  });
+export default function ObjectDraw() {
+  const [annotations, setAnnotations] = useState([]);
+  const [newAnnotation, setNewAnnotation] = useState([]);
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  const { setCoordinates, coOrdinates, resizedDimensions } =
+    useContext(ShapeDrawerContext);
+  const transformerRef = useRef(null);
 
-  useEffect(() => {
-    getDefaultDimensions();
-  }, [currentImg]);
+  const handleMouseDown = (event) => {
+    if (newAnnotation.length === 0) {
+      const { x, y } = event.target.getStage().getPointerPosition();
+      setNewAnnotation([{ x, y, width: 0, height: 0, key: "0" }]);
 
-  const getDefaultDimensions = () => {
-    var imageContainer = document.createElement("img");
-    imageContainer.src = currentImg.image;
-
-    imageContainer.onload = function () {
-      const defaultWidth = imageContainer.naturalWidth;
-      const defaultHt = imageContainer.naturalHeight;
-      setDefaultCoordinates({ defaultWidth, defaultHt });
-    };
-    imageContainer.onerror = function (e) {
-      setDefaultCoordinates({ defaultWidth: 0, defaultHt: 0 });
-    };
+      const newCoordinates = { ...coOrdinates };
+      newCoordinates.x1 = x;
+      newCoordinates.y1 = y;
+      setCoordinates(newCoordinates);
+    }
   };
 
-  const handleNext = () => {
-    if (currentImg.id < imagesList.length - 1)
-      setCurrImg(imagesList[currentImg.id + 1]);
-    else setCurrImg(imagesList[0]);
+  const handleMouseUp = (event) => {
+    if (newAnnotation.length === 1) {
+      const sx = newAnnotation[0].x;
+      const sy = newAnnotation[0].y;
+      const { x, y } = event.target.getStage().getPointerPosition();
+      const annotationToAdd = {
+        x: sx,
+        y: sy,
+        width: x - sx,
+        height: y - sy,
+        key: annotations.length + 1,
+      };
+      annotations.push(annotationToAdd);
+      setNewAnnotation([]);
+      setAnnotations(annotations);
+
+      const newCoordinates = { ...coOrdinates };
+      newCoordinates.x2 = x;
+      newCoordinates.y2 = y;
+      setCoordinates(newCoordinates);
+    }
   };
 
-  const handlePrev = () => {
-    if (currentImg.id > 0) setCurrImg(imagesList[currentImg.id - 1]);
-    else setCurrImg(imagesList[imagesList.length - 1]);
-  };
-
-  const handleSave = () => {
-    const { defaultWidth, defaultHt } = defaultCoordinates;
-    const allCoordinates = {
-      old: {
-        coOrdinates,
-        dimensions: {
-          width: 400,
-          height: 400,
+  const handleMouseMove = (event) => {
+    if (newAnnotation.length === 1) {
+      const sx = newAnnotation[0].x;
+      const sy = newAnnotation[0].y;
+      const { x, y } = event.target.getStage().getPointerPosition();
+      setNewAnnotation([
+        {
+          x: sx,
+          y: sy,
+          width: x - sx,
+          height: y - sy,
+          key: "0",
         },
-      },
-      new: {
-        coOrdinates: {
-          x1: (coOrdinates.x1 / 400) * defaultWidth,
-          y1: (coOrdinates.y1 / 400) * defaultHt,
-          x2: (coOrdinates.x2 / 400) * defaultWidth,
-          y2: (coOrdinates.y2 / 400) * defaultHt,
-        }, // needs calculation
-        dimensions: {
-          width: defaultWidth,
-          height: defaultHt,
-        },
-      },
-    };
-    console.log({ allCoordinates });
+      ]);
+    }
+  };
+
+  const annotationsToDraw = [...annotations, ...newAnnotation];
+
+  const checkDeselect = (e) => {
+    if (["Circle", "Text"].includes(e.target.className)) {
+      handleDelete(selectedIndex);
+    }
+    const clickedOnEmpty = e.target === e.target.getStage();
+    if (clickedOnEmpty || e.target.className !== "Rect") {
+      setSelectedIndex(null);
+    }
+  };
+
+  const handleDelete = (index) => {
+    const annot = JSON.parse(JSON.stringify(annotations));
+    annot.splice(index, 1);
+    setAnnotations(annot);
   };
 
   return (
-    <div>
-      <button onClick={handlePrev}>Prev</button>
-      <button onClick={handleNext}>Next</button>
-      <button onClick={handleSave}>Save</button>
-      <Image
-        imageData={currentImg}
-        setCoordinates={setCoordinates}
-        coOrdinates={coOrdinates}
-        defaultCoordinates={defaultCoordinates}
-      />
-    </div>
+    <Stage
+      width={resizedDimensions.width}
+      height={resizedDimensions.height}
+      onMouseDown={checkDeselect}
+      onMouseUp={handleMouseUp}
+    >
+      <Layer>
+        <URLImage
+          handleMouseDown={handleMouseDown}
+          handleMouseMove={handleMouseMove}
+          handleMouseUp={handleMouseUp}
+          onClick={checkDeselect}
+          x={0}
+        />
+        {annotationsToDraw.map((value, index) => {
+          return (
+            <>
+              <Rect
+                x={value.x}
+                key={index}
+                onClick={(e) => {
+                  setSelectedIndex(index);
+                  transformerRef?.current?.nodes([e.target]);
+                  transformerRef?.current?.getLayer().batchDraw();
+                }}
+                shapeProps={value}
+                y={value.y}
+                width={value.width}
+                height={value.height}
+                fill="transparent"
+                stroke="red"
+                draggable
+              />
+              {selectedIndex === index && (
+                <>
+                  <Transformer
+                    ref={transformerRef}
+                    anchorCornerRadius={5}
+                    rotateEnabled={false}
+                  ></Transformer>
+                  <Circle
+                    radius={10}
+                    x={value.x + value.width}
+                    y={value.y}
+                    fill="red"
+                    key={index}
+                    id={index}
+                  />
+                  <Text
+                    text="X"
+                    x={value.x + value.width - 3}
+                    y={value.y - 5}
+                    fontSize={10}
+                    fill="white"
+                  />
+                </>
+              )}
+            </>
+          );
+        })}
+      </Layer>
+    </Stage>
   );
-};
-
-export default ObjectDraw;
+}

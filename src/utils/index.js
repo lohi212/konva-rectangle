@@ -25,17 +25,3 @@ export const imagesList = [
     id: 4,
   },
 ];
-
-export const getDefaultDimensions = (src) => {
-  var imageCont = document.createElement("img");
-  imageCont.src = src;
-
-  imageCont.onload = function () {
-    const defaultWidth = imageCont.naturalWidth;
-    const defaultHt = imageCont.naturalHeight;
-    return { defaultWidth, defaultHt };
-  };
-  imageCont.onerror = function (e) {
-    return { defaultWidth: 0, defaultHt: 0 };
-  };
-};
